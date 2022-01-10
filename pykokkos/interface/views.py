@@ -251,6 +251,9 @@ class View(ViewType):
         if space is MemorySpace.CudaSpace and trait is not trait.Unmanaged:
             space = MemorySpace.HostSpace
 
+        if space is MemorySpace.HIPSpace:
+            space = MemorySpace.HostSpace
+        
         self.space: MemorySpace = space
         self.layout: Layout = layout
         self.trait: Trait = trait

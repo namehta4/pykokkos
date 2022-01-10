@@ -64,4 +64,29 @@ elif [ "${COMPILER}" == "nvcc" ]; then
         "${SRC}".o -o "${MODULE}" \
         "${KOKKOS_LIB_PATH}/libkokkoscontainers.so" \
         "${KOKKOS_LIB_PATH}/libkokkoscore.so"
+
+elif [ "${COMPILER}" == "hipcc" ]; then
+        hipcc \
+        `python3 -m pybind11 --includes` \
+        -I.. \
+        -O3 \
+        -isystem "${KOKKOS_INCLUDE_PATH}" \
+        -fPIC \
+	-fopenmp --offload-arch=gfx908 -std=c++14 \
+        -DSPACE="${EXEC_SPACE}" \
+        -o "${SRC}".o \
+        -c "${SRC}" \
+        -Dpk_arg_memspace="${PK_ARG_MEMSPACE}" \
+        -Dpk_arg_layout="${PK_ARG_LAYOUT}" \
+        -Dpk_exec_space="Kokkos::${EXEC_SPACE}" \
+        -Dpk_real="${PK_REAL}"
+
+        hipcc \
+        -I.. \
+        -O3 \
+        -shared \
+        -fopenmp --offload-arch=gfx908 \
+	"${SRC}".o -o "${MODULE}" \
+        "${KOKKOS_LIB_PATH}/libkokkoscontainers.so" \
+        "${KOKKOS_LIB_PATH}/libkokkoscore.so"
 fi

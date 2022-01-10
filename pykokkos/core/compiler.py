@@ -213,10 +213,13 @@ class Compiler:
 
         from pykokkos.bindings import kokkos
 
-        if hasattr(kokkos, "Cuda"):
-            return "nvcc"
+        #if hasattr(kokkos, "Cuda"):
+        #    return "nvcc"
+        #elif hasattr(kokkos, "HIP"):
+        #    return "hipcc"
 
-        return "g++"
+        #return "g++"
+        return "hipcc"
 
     def get_defaults_file(self, main: Path) -> Path:
         """

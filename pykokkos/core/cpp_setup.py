@@ -180,6 +180,11 @@ class CppSetup:
         lib_path, include_path = self.get_kokkos_paths()
         compute_capability: str = self.get_cuda_compute_capability(compiler)
 
+        if space.value=='HIP':
+            space_value='Experimental::HIP'
+        else:
+            space_value=space.value
+
         command: List[str] = [f"./{self.script}",
                               compiler,             # What compiler to use
                               self.module_file,     # Compilation target
@@ -190,6 +195,7 @@ class CppSetup:
                               str(lib_path),        # Path to Kokkos install lib/ directory
                               str(include_path),    # Path to Kokkos install include/ directory
                               compute_capability]   # Device compute capability
+        print(' '.join(command))
         compile_result = subprocess.run(command, cwd=output_dir, capture_output=True, check=False)
 
         if compile_result.returncode != 0:
