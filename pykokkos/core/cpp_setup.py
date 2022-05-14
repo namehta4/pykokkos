@@ -169,6 +169,9 @@ class CppSetup:
         if space is ExecutionSpace.Cuda:
             if enable_uvm:
                 view_space = "Kokkos::CudaUVMSpace"
+        if space is ExecutionSpace.HIP:
+            if enable_uvm:
+                view_space = "Kokkos::Experimental::HIPHostPinnedSpace"
 
         view_layout: str = str(get_default_layout(get_default_memory_space(space)))
         view_layout = view_layout.split(".")[-1]
@@ -188,7 +191,7 @@ class CppSetup:
         command: List[str] = [f"./{self.script}",
                               compiler,             # What compiler to use
                               self.module_file,     # Compilation target
-                              space.value,          # Execution space
+                              space_value,          # Execution space
                               view_space,           # Argument views memory space
                               view_layout,          # Argument views memory layout
                               precision,            # Default real precision

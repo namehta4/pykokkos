@@ -973,7 +973,8 @@ class Input:
                                 s.sub_domain_hi_x, s.sub_domain_hi_y, s.sub_domain_hi_z,
                                 s.x.data, s.type.data, s.id.data, s.ntypes)
             else:
-                n: int = pk.parallel_reduce("init_x", pk.RangePolicy(pk.Serial, iz_start + 1, iz_end + 2), init_s.init_x)
+                n: int = pk.parallel_reduce("init_x", pk.RangePolicy(pk.HIP, iz_start + 1, iz_end + 2), init_s.init_x)
+                print(n)
 
             N_local_offset: int = n
             comm.scan_int(N_local_offset, 1)
