@@ -4,61 +4,29 @@ import pykokkos as pk
 
 from parse_args import parse_args
 
-
-@pk.workload
+@pk.functor
 class Workload:
-    def __init__(self, N: int, M: int, nrepeat: int, fill: bool):
+    def __init__(self, N: int, M: int, fill: bool):
         self.N: int = N
         self.M: int = M
-        self.nrepeat: int = nrepeat
-        self.y: pk.View1D[pk.double] = pk.View([N], pk.double)
-        self.x: pk.View1D[pk.double] = pk.View([M], pk.double)
-        self.A: pk.View2D[pk.double] = pk.View([N, M], pk.double)
+        self.y: pk.View1D[pk.double] = pk.View([N], pk.double, space=pk.MemorySpace.CudaSpace)
+        self.x: pk.View1D[pk.double] = pk.View([M], pk.double, space=pk.MemorySpace.CudaSpace)
+        self.A: pk.View2D[pk.double] = pk.View([N, M], pk.double, space=pk.MemorySpace.CudaSpace)
 
-        if fill:
-            self.y.fill(1)
-            self.x.fill(1)
-            self.A.fill(1)
-        else:
-            for i in range(N):
-                self.y[i] = 1
+    @pk.workunit
+    def y_init(self, i: int):
+        self.y[i] = 1
 
-            for i in range(M):
-                self.x[i] = 1
 
-            for j in range(N):
-                for i in range(M):
-                    self.A[j][i] = 1
+    @pk.workunit
+    def x_init(self, i: int):
+        self.x[i] = 1
 
-        self.result: float = 0
-        self.timer_result: float = 0
-
-    @pk.main
-    def run(self):
-        timer = pk.Timer()
-
-        pk.parallel_for(self.N, self.matrix_init)
-
-        for i in range(self.nrepeat):
-            self.result = pk.parallel_reduce("04", self.N, self.yAx)
-
-        self.timer_result = timer.seconds()
 
     @pk.workunit
     def matrix_init(self, j: int):
         for i in range(self.M):
             self.A[j][i] = 1
-
-    @pk.callback
-    def results(self):
-        print(f"Computed result for {self.N} x {self.M} is {self.result}")
-        solution: float = self.N * self.M
-
-        if self.result != solution:
-            pk.printf("Error: result (%lf) != solution (%lf)\n",
-                      self.result, solution)
-
-        print(f"N({self.N}) M({self.M}) nrepeat({self.nrepeat}) problem(MB) time({self.timer_result}) bandwidth(GB/s)")
 
     @pk.workunit
     def yAx(self, j: int, acc: pk.Acc[float]):
@@ -69,20 +37,38 @@ class Workload:
         acc += self.y[j] * temp2
 
 
-if __name__ == "__main__":
+def run() -> None:
     values: Tuple[int, int, int, int, int, bool] = parse_args()
     N: int = values[0]
     M: int = values[1]
-    nrepeat: int = values[4]
     fill: bool = values[-1]
-
-    space: str = values[-2]
-    if space == "":
-        space = pk.ExecutionSpace.OpenMP
-    else:
-        space = pk.ExecutionSpace(space)
-
-    pk.set_default_space(space)
-
+    nrepeat: int = 100
     print(f"Total size S = {N * M} N = {N} M = {M}")
-    pk.execute(pk.get_default_space(), Workload(N, M, nrepeat, fill))
+
+    pk.set_default_space(pk.ExecutionSpace.Cuda)
+
+    w = Workload(N, M, fill)
+    p = pk.RangePolicy(pk.get_default_space(), 0, N)
+
+    timer = pk.Timer()
+
+    pk.parallel_for(pk.RangePolicy(pk.get_default_space(), 0, N), w.y_init)
+    pk.parallel_for(pk.RangePolicy(pk.get_default_space(), 0, M), w.x_init)
+    pk.parallel_for(pk.RangePolicy(pk.get_default_space(), 0, N), w.matrix_init)
+
+    for i in range(nrepeat):
+        result = pk.parallel_reduce(p, w.yAx)
+
+    timer_result = timer.seconds()
+
+    print(f"Computed result for {N} x {M} is {result}")
+    solution: float = N * M
+
+    if result != solution:
+        pk.printf("Error: result (%lf) != solution (%lf)\n",
+                  result, solution)
+
+    print(f"N({N}) M({M}) nrepeat({nrepeat}) problem(MB) time({timer_result}) bandwidth(GB/s)")
+
+if __name__ == "__main__":
+    run()

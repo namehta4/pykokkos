@@ -10,6 +10,8 @@ from typing import (
 )
 
 import numpy as np
+import cupy as cp
+import nvtx
 
 import pykokkos as pk
 from pykokkos.bindings import kokkos
@@ -27,6 +29,10 @@ from .data_types import (
 from .layout import get_default_layout, Layout
 from .memory_space import get_default_memory_space, MemorySpace
 from .hierarchical import TeamMember
+
+class InterfaceHolder():
+    def __init__(self,cuda_array_interface):
+        self.__cuda_array_interface__ = cuda_array_interface
 
 class Trait(Enum):
     Atomic = kokkos.Atomic
@@ -257,7 +263,11 @@ class View(ViewType):
         kokkos_lib: ModuleType = km.get_kokkos_module(is_cpu)
         self.array = kokkos_lib.array(
             "", self.shape, None, None, self.dtype.value, self.space.value, self.layout.value, self.trait.value)
-        self.data = np.array(self.array, copy=False)
+        tmp1 = np.array(self.array, copy=False)
+        t=tmp1.__array_interface__
+        ti=InterfaceHolder(t)
+        self.data = cp.array(ti, copy=False)
+
 
         smaller: np.ndarray = old_data if old_data.size < self.data.size else self.data
         data_slice = tuple([slice(0, i) for i in smaller.shape])
@@ -308,8 +318,8 @@ class View(ViewType):
             layout = get_default_layout(space)
 
         # only allow CudaSpace/HIPSpace view for cupy arrays
-        if (space in {MemorySpace.CudaSpace, MemorySpace.HIPSpace}) and trait is not trait.Unmanaged:
-            space = MemorySpace.HostSpace
+        #if (space in {MemorySpace.CudaSpace, MemorySpace.HIPSpace}) and trait is not trait.Unmanaged:
+        #    space = MemorySpace.HostSpace
 
         self.space: MemorySpace = space
         self.layout: Layout = layout
@@ -333,7 +343,10 @@ class View(ViewType):
             if len(self.shape) == 0:
                 shape = [1]
             self.array = kokkos_lib.array("", shape, None, None, self.dtype.value, space.value, layout.value, trait.value)
-        self.data = np.array(self.array, copy=False)
+            tmp2 = np.array(self.array, copy=False)
+            t2 = tmp2.__array_interface__
+            ti2= InterfaceHolder(t2)
+            self.data = cp.array(ti2, copy=False)
 
     def _get_type(self, dtype: Union[DataType, type]) -> Optional[DataType]:
         """
@@ -367,43 +380,13 @@ class View(ViewType):
 
 
     def __eq__(self, other):
-        # avoid circular import with scoped import
-        from pykokkos.lib.ufuncs import equal
-        if isinstance(other, float):
-            new_other = pk.View((), dtype=pk.double)
-            new_other[:] = other
-        elif isinstance(other, bool):
-            new_other = pk.View((), dtype=pk.bool)
-            new_other[:] = other
-        elif isinstance(other, int):
-            if self.ndim == 0:
-                ret = pk.View((), dtype=pk.bool)
-                ret[:] = int(self) == other
-                return ret
-            if 0 <= other <= 255:
-                other_dtype = pk.uint8
-            elif 0 <= other <= 65535:
-                other_dtype = pk.uint16
-            elif 0 <= other <= 4294967295:
-                other_dtype = pk.uint32
-            elif 0 <= other <= 18446744073709551615:
-                other_dtype = pk.uint64
-            elif -128 <= other <= 127:
-                other_dtype = pk.int8
-            elif -32768 <= other <= 32767:
-                other_dtype = pk.int16
-            elif -2147483648 <= other <= 2147483647:
-                other_dtype = pk.int32
-            elif -9223372036854775808 <= other <= 9223372036854775807:
-                other_dtype = pk.int64
-            new_other = pk.View((), dtype=other_dtype)
-            new_other[:] = other
-        elif isinstance(other, pk.View):
-            new_other = other
-        else:
-            raise ValueError("unexpected types!")
-        return equal(self, new_other)
+        if not isinstance(other, pk.View) and self.rank() > 0:
+            return [i == other for i in self]
 
+        if self.array == other:
+            return True
+        else:
+            return False
 
 
     def __hash__(self):
@@ -472,7 +455,8 @@ class Subview(ViewType):
         self.shape: Tuple[int] = self.data.shape
 
         if self.data.shape == (0,):
-            self.data = np.array([], dtype=self.data.dtype)
+            #self.data = np.array([], dtype=self.data.dtype)
+            self.data = cp.array([], dtype=self.data.dtype)
             self.shape = ()
 
         self.parent_slice: List[Union[int, slice]]
@@ -815,9 +799,3 @@ class ScratchView7D(ScratchView, Generic[T]):
 
 class ScratchView8D(ScratchView, Generic[T]):
     pass
-
-
-def astype(view, dtype):
-    new_view = pk.View([*view.shape], dtype=dtype)
-    new_view[:] = view
-    return new_view

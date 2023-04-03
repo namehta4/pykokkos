@@ -71,7 +71,7 @@ if __name__ == "__main__":
 
     space: str = values[-2]
     if space == "":
-        space = pk.ExecutionSpace.OpenMP
+        space = pk.ExecutionSpace.Cuda
     else:
         space = pk.ExecutionSpace(space)
 

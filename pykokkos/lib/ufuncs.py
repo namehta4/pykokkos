@@ -42,64 +42,6 @@ def _ufunc_kernel_dispatcher(tid,
     return ret
 
 
-def _broadcast_views(view1, view2):
-    # support broadcasting by using the same
-    # shape matching rules as NumPy
-    # TODO: determine if this can be done with
-    # more memory efficiency?
-    if view1.shape != view2.shape:
-        new_shape = np.broadcast_shapes(view1.shape, view2.shape)
-        view1_new = pk.View([*new_shape], dtype=view1.dtype)
-        view1_new[:] = view1
-        view1 = view1_new
-        view2_new = pk.View([*new_shape], dtype=view2.dtype)
-        view2_new[:] = view2
-        view2 = view2_new
-    return view1, view2
-
-
-def _typematch_views(view1, view2):
-    # very crude casting implementation
-    # for binary ufuncs
-    dtype1 = view1.dtype
-    dtype2 = view2.dtype
-    dtype_extractor = re.compile(r".*(?:data_types|DataType)\.(\w+)")
-    res1 = dtype_extractor.match(str(dtype1))
-    res2 = dtype_extractor.match(str(dtype2))
-    effective_dtype = dtype1
-    if res1 is not None and res2 is not None:
-        res1_dtype_str = res1.group(1)
-        res2_dtype_str = res2.group(1)
-        if res1_dtype_str == "double":
-            res1_dtype_str = "float64"
-        elif res1_dtype_str == "float":
-            res1_dtype_str = "float32"
-        if res2_dtype_str == "double":
-            res2_dtype_str = "float64"
-        elif res2_dtype_str == "float":
-            res2_dtype_str = "float32"
-        if res1_dtype_str == "bool" or res2_dtype_str == "bool":
-            res1_dtype_str = "uint8"
-            dtype1 = pk.uint8
-            res2_dtype_str = "uint8"
-            dtype2 = pk.uint8
-        if (("int" in res1_dtype_str and "int" in res2_dtype_str) or
-            ("float" in res1_dtype_str and "float" in res2_dtype_str)):
-            dtype_1_width = int(res1_dtype_str.split("t")[1])
-            dtype_2_width = int(res2_dtype_str.split("t")[1])
-            if dtype_1_width >= dtype_2_width:
-                effective_dtype = dtype1
-                view2_new = pk.View([*view2.shape], dtype=effective_dtype)
-                view2_new[:] = view2
-                view2 = view2_new
-            else:
-                effective_dtype = dtype2
-                view1_new = pk.View([*view1.shape], dtype=effective_dtype)
-                view1_new[:] = view1
-                view1 = view1_new
-    return view1, view2, effective_dtype
-
-
 def reciprocal(view):
     """
     Return the reciprocal of the argument, element-wise.
@@ -1756,6 +1698,16 @@ def floor_divide(viewA, viewB):
     return out
 
 
+@pk.workunit
+def sin_impl_1d_double(tid: int, view: pk.View1D[pk.double], out: pk.View1D[pk.double]):
+    out[tid] = sin(view[tid])
+
+
+@pk.workunit
+def sin_impl_1d_float(tid: int, view: pk.View1D[pk.float], out: pk.View1D[pk.float]):
+    out[tid] = sin(view[tid])
+
+
 def sin(view):
     """
     Element-wise trigonometric sine of the view
@@ -1771,22 +1723,16 @@ def sin(view):
            Output view.
 
     """
-    dtype = view.dtype
-    ndims = len(view.shape)
-    if ndims > 2:
-        raise NotImplementedError("sin() ufunc only supports up to 2D views")
-    out = pk.View([*view.shape], dtype=dtype)
-    if view.shape == ():
-        tid = 1
+    if len(view.shape) > 1:
+        raise NotImplementedError("only 1D views currently supported for sin() ufunc.")
+    if str(view.dtype) == "DataType.double":
+        out = pk.View([view.shape[0]], pk.double)
+        pk.parallel_for(view.shape[0], sin_impl_1d_double, view=view, out=out)
+    elif str(view.dtype) == "DataType.float":
+        out = pk.View([view.shape[0]], pk.float)
+        pk.parallel_for(view.shape[0], sin_impl_1d_float, view=view, out=out)
     else:
-        tid = view.shape[0]
-    _ufunc_kernel_dispatcher(tid=tid,
-                             dtype=dtype,
-                             ndims=ndims,
-                             op="sin",
-                             sub_dispatcher=pk.parallel_for,
-                             out=out,
-                             view=view)
+        raise NotImplementedError
     return out
 
 
@@ -1846,6 +1792,16 @@ def cos(view):
     return out
 
 
+@pk.workunit
+def tan_impl_1d_double(tid: int, view: pk.View1D[pk.double], out: pk.View1D[pk.double]):
+    out[tid] = tan(view[tid])
+
+
+@pk.workunit
+def tan_impl_1d_float(tid: int, view: pk.View1D[pk.float], out: pk.View1D[pk.float]):
+    out[tid] = tan(view[tid])
+
+
 def tan(view):
     """
     Element-wise tangent of the view
@@ -1861,22 +1817,16 @@ def tan(view):
            Output view.
 
     """
-    dtype = view.dtype
-    ndims = len(view.shape)
-    if ndims > 2:
-        raise NotImplementedError("tan() ufunc only supports up to 2D views")
-    out = pk.View([*view.shape], dtype=dtype)
-    if view.shape == ():
-        tid = 1
+    if len(view.shape) > 1:
+        raise NotImplementedError("only 1D views currently supported for tan() ufunc.")
+    if str(view.dtype) == "DataType.double":
+        out = pk.View([view.shape[0]], pk.double)
+        pk.parallel_for(view.shape[0], tan_impl_1d_double, view=view, out=out)
+    elif str(view.dtype) == "DataType.float":
+        out = pk.View([view.shape[0]], pk.float)
+        pk.parallel_for(view.shape[0], tan_impl_1d_float, view=view, out=out)
     else:
-        tid = view.shape[0]
-    _ufunc_kernel_dispatcher(tid=tid,
-                             dtype=dtype,
-                             ndims=ndims,
-                             op="tan",
-                             sub_dispatcher=pk.parallel_for,
-                             out=out,
-                             view=view)
+        raise NotImplementedError
     return out
 
 
@@ -2167,6 +2117,16 @@ def fmin(viewA, viewB):
     return out
 
 
+@pk.workunit
+def exp_impl_1d_double(tid: int, view: pk.View1D[pk.double], out: pk.View1D[pk.double]):
+    out[tid] = exp(view[tid])
+
+
+@pk.workunit
+def exp_impl_1d_float(tid: int, view: pk.View1D[pk.float], out: pk.View1D[pk.float]):
+    out[tid] = exp(view[tid])
+
+
 def exp(view):
     """
     Element-wise exp of the view.
@@ -2182,24 +2142,16 @@ def exp(view):
            Output view.
 
     """
-    dtype = view.dtype
-    ndims = len(view.shape)
-    if ndims > 2:
-        raise NotImplementedError("exp() ufunc only supports up to 2D views")
-    if view.size == 0:
-        return view
-    out = pk.View([*view.shape], dtype=dtype)
-    if view.shape == ():
-        tid = 1
+    if len(view.shape) > 1:
+        raise NotImplementedError("only 1D views currently supported for exp() ufunc.")
+    if str(view.dtype) == "DataType.double":
+        out = pk.View([view.shape[0]], pk.double)
+        pk.parallel_for(view.shape[0], exp_impl_1d_double, view=view, out=out)
+    elif str(view.dtype) == "DataType.float":
+        out = pk.View([view.shape[0]], pk.float)
+        pk.parallel_for(view.shape[0], exp_impl_1d_float, view=view, out=out)
     else:
-        tid = view.shape[0]
-    _ufunc_kernel_dispatcher(tid=tid,
-                             dtype=dtype,
-                             ndims=ndims,
-                             op="exp",
-                             sub_dispatcher=pk.parallel_for,
-                             out=out,
-                             view=view)
+        raise NotImplementedError
     return out
 
 
@@ -2432,23 +2384,30 @@ def index(viewA, viewB):
     return out
 
 
+@pk.workunit
+def isnan_impl_1d_double(tid: int, view: pk.View1D[pk.double], out: pk.View1D[pk.uint8]):
+    out[tid] = isnan(view[tid])
+
+
+@pk.workunit
+def isnan_impl_1d_float(tid: int, view: pk.View1D[pk.float], out: pk.View1D[pk.uint8]):
+    out[tid] = isnan(view[tid])
+
+
 def isnan(view):
-    dtype = view.dtype
-    ndims = len(view.shape)
-    if ndims > 2:
-        raise NotImplementedError("isnan() ufunc only supports up to 2D views")
-    out = pk.View([*view.shape], dtype=pk.bool)
-    if view.shape == ():
-        tid = 1
-    else:
-        tid = view.shape[0]
-    _ufunc_kernel_dispatcher(tid=tid,
-                             dtype=dtype,
-                             ndims=ndims,
-                             op="isnan",
-                             sub_dispatcher=pk.parallel_for,
-                             out=out,
-                             view=view)
+    if len(view.shape) > 1:
+        raise NotImplementedError("isnan() ufunc only supports 1D views")
+    out = pk.View([*view.shape], dtype=pk.uint8)
+    if "double" in str(view.dtype) or "float64" in str(view.dtype):
+        pk.parallel_for(view.shape[0],
+                        isnan_impl_1d_double,
+                        view=view,
+                        out=out)
+    elif "float" in str(view.dtype):
+        pk.parallel_for(view.shape[0],
+                        isnan_impl_1d_float,
+                        view=view,
+                        out=out)
     return out
 
 
@@ -2473,48 +2432,36 @@ def isinf(view):
 
 
 def equal(view1, view2):
-    """
-    Computes the truth value of ``view1_i`` == ``view2_i`` for each element
-    ``x1_i`` of the input view ``view1`` with the respective element ``x2_i``
-    of the input view ``view2``.
+    # TODO: write even more dispatching for cases where view1 and view2
+    # have different, but comparable, types (like float32 vs. float64?)
+    # this may "explode" without templating
 
+    ndims = len(view2.shape)
+    dtype = view1.dtype
+    # array API suite will fail if we check view1.shape here...
+    if ndims > 1:
+        raise NotImplementedError("only 1D views currently supported for equal() ufunc.")
 
-    Parameters
-    ----------
-    view1 : pykokkos view
-            Input view. May have any data type.
-    view2 : pykokkos view
-            Input view. May have any data type, but must be shape-compatible
-            with ``view1`` via broadcasting.
+    if sum(view1.shape) == 0 or sum(view2.shape) == 0:
+        return np.empty(shape=(0,))
 
-    Returns
-    -------
-    out : pykokkos view (bool)
-           Output view.
-    """
-    if view1.size == 0 and view2.size == 0:
-        return pk.View((), dtype=pk.bool)
-    view1, view2 = _broadcast_views(view1, view2)
-    dtype1 = view1.dtype
-    dtype2 = view2.dtype
-    view1, view2, effective_dtype = _typematch_views(view1, view2)
-    ndims = len(view1.shape)
-    if ndims > 5:
-        raise NotImplementedError("equal() ufunc only supports up to 5D views")
-    out = pk.View([*view1.shape], dtype=pk.bool)
-    if view1.shape == ():
-        tid = 1
-    else:
-        tid = view1.shape[0]
-    _ufunc_kernel_dispatcher(tid=tid,
-                             dtype=effective_dtype,
+    if view1.shape != view2.shape:
+        if not view1.size <= 1 and not view2.size <= 1:
+            # TODO: supporting __eq__ over broadcasted shapes beyond
+            # scalar (i.e., matching number of columns)
+            raise ValueError("view1 and view2 have incompatible shapes")
+
+    view_result = pk.View([*view1.shape], dtype=pk.uint8)
+    _ufunc_kernel_dispatcher(tid=view1.size,
+                             dtype=dtype,
                              ndims=ndims,
                              op="equal",
                              sub_dispatcher=pk.parallel_for,
-                             out=out,
+                             view_result=view_result,
                              view1=view1,
-                             view2=view2)
-    return out
+                             view2=view2,
+                             view2_size=view2.size)
+    return view_result
 
 
 def isfinite(view):
@@ -2728,40 +2675,6 @@ def floor(view):
                              dtype=dtype,
                              ndims=ndims,
                              op="floor",
-                             sub_dispatcher=pk.parallel_for,
-                             out=out,
-                             view=view)
-    return out
-
-
-def tanh(view):
-    """
-    Calculates an approximation to the hyperbolic tangent for each element x_i of the input view.
-
-    Parameters
-    ----------
-    view : pykokkos view
-            Input view whose elements each represent a hyperbolic angle. Should have a floating-point data type.
-
-    Returns
-    -------
-    y : pykokkos view
-        A view containing the hyperbolic tangent of each element in the input view. The returned view must
-        have a floating-point data type determined by type promotion rules.
-    """
-    dtype = view.dtype
-    ndims = len(view.shape)
-    if ndims > 2:
-        raise NotImplementedError("tanh() ufunc only supports up to 2D views")
-    out = pk.View([*view.shape], dtype=dtype)
-    if view.shape == ():
-        tid = 1
-    else:
-        tid = view.shape[0]
-    _ufunc_kernel_dispatcher(tid=tid,
-                             dtype=dtype,
-                             ndims=ndims,
-                             op="tanh",
                              sub_dispatcher=pk.parallel_for,
                              out=out,
                              view=view)

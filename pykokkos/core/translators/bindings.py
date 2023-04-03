@@ -154,7 +154,7 @@ def generate_functor_instance(functor: str, members: PyKokkosMembers, with_rando
     for v, d_v in device_views.items():
         args.append(d_v)
 
-        if not always_use_kokkos_copy:
+        if always_use_kokkos_copy:
             view_type: cppast.ClassType = members.views[cppast.DeclRefExpr(v)]
             if get_view_memory_space(view_type, "bindings") == Keywords.ArgMemSpace.value:
                 mirror_views += f"auto {d_v} = Kokkos::create_mirror_view_and_copy({exec_space_instance}, {v});"
@@ -288,7 +288,7 @@ def generate_call(operation: str, functor: str, members: PyKokkosMembers, tag: c
 
     args: List[str] = [Keywords.KernelName.value]
 
-    tag_name: str = tag.declname+"_tag"
+    tag_name: str = tag.declname
     if is_hierarchical:
         args.append(f"Kokkos::TeamPolicy<{Keywords.DefaultExecSpace.value},{functor}::{tag_name}>({Keywords.LeagueSize.value},Kokkos::AUTO,{Keywords.VectorLength.value})")
     else:

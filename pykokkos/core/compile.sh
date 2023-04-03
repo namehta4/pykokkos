@@ -21,7 +21,7 @@ if [ "${COMPILER}" == "g++" ]; then
         -O3 \
         -isystem "${KOKKOS_INCLUDE_PATH}" \
         -fPIC \
-        -fopenmp -std=c++14 \
+        -fopenmp -std=c++17 \
         -DSPACE="${EXEC_SPACE}" \
         -o "${SRC}".o \
         -c "${SRC}" \
@@ -47,7 +47,7 @@ elif [ "${COMPILER}" == "nvcc" ]; then
         -isystem "${KOKKOS_INCLUDE_PATH}" \
         -arch="${COMPUTE_CAPABILITY}" \
         --expt-extended-lambda -fPIC \
-        -Xcompiler -fopenmp -std=c++14 \
+        -Xcompiler -fopenmp -std=c++17 \
         -DSPACE="${EXEC_SPACE}" \
         -o "${SRC}".o \
         -c "${SRC}" \
@@ -74,7 +74,7 @@ elif [ "${COMPILER}" == "hipcc" ]; then
         -O3 \
         -isystem "${KOKKOS_INCLUDE_PATH}" \
         -fPIC -fno-gpu-rdc \
-        -fopenmp -std=c++14 \
+        -fopenmp -std=c++17 \
         -DSPACE="${EXEC_SPACE}" \
         -o "${SRC}".o \
         -c "${SRC}" \
